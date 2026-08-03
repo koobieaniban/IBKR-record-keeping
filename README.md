@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IBKR Trade Journal
 
-## Getting Started
+Daily trade recording dashboard: pulls fills from Interactive Brokers, groups them into
+stock/option/forex trades, and gives you a pending-review queue where you approve each
+trade and add a comment before it becomes part of your permanent record.
 
-First, run the development server:
+- `src/lib/matching.ts` — FIFO round-trip matching + multi-leg trade grouping
+- `src/lib/flex.ts` / `src/lib/normalize.ts` — IBKR Flex Web Service client and normalizers
+- `src/lib/ingest.ts` — rebuilds the PENDING trade queue on every run; APPROVED trades are
+  never touched
+- `src/app/pending`, `src/app/trades`, `src/app/summary` — the three dashboard pages
+- `worker/ingest-daily.ts` — the daily cron entrypoint (Flex → matching → DB)
+- `scripts/backfill-from-mcp-json.ts` — one-off historical loader from a plain
+  `get_account_trades` JSON dump (no strike/expiry/put-call; used only for the initial backfill)
+
+## Local development
 
 ```bash
+npm install
+cp .env.example .env   # fill in DATABASE_URL
+npx prisma migrate dev
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Deploying (Railway + Supabase)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Database**: create a Supabase project, copy its Postgres connection string (the pooled
+   "Transaction" connection string works well for this), and run migrations against it once:
+   ```bash
+   DATABASE_URL="<supabase-connection-string>" npm run db:migrate:deploy
+   ```
+2. **Railway project**: create a new Railway project from this GitHub repo, then add two
+   services from the same repo:
+   - **`web`** — the dashboard. Default Nixpacks build (`npm run build` / `npm start`) works
+     as-is. Set `DATABASE_URL` and generate a public domain for it.
+   - **`ingest-worker`** — the daily Flex pull. In its service Settings, override:
+     - Start command: `npm run ingest:daily`
+     - Cron Schedule: run once daily, right after US market close. Railway cron is UTC-only,
+       so pick the offset for the season (e.g. `30 20 * * 1-5` for 4:30pm ET during EDT,
+       `30 21 * * 1-5` during EST) — this needs a manual one-hour nudge twice a year around
+       DST changes.
+     - Env vars: `DATABASE_URL`, `IBKR_FLEX_TOKEN`, `IBKR_FLEX_QUERY_ID` (from IBKR Client
+       Portal → Performance & Reports → Flex Queries / Settings → Flex Web Service). Never
+       commit these — set them directly in Railway's dashboard.
+3. Open the `web` service's domain — new trades will show up in **Pending Review** the day
+   after the worker's first scheduled run.
