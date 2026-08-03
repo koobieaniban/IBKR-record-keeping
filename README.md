@@ -24,11 +24,22 @@ npm run dev
 
 ## Deploying (Railway + Supabase)
 
-1. **Database**: create a Supabase project, copy its Postgres connection string (the pooled
-   "Transaction" connection string works well for this), and run migrations against it once:
+1. **Database**: create a Supabase project and copy its **Session pooler** connection string
+   (Connect dialog → Session pooler tab, host like `aws-...pooler.supabase.com:5432`) — use
+   this one everywhere in this app, not the Transaction pooler (`:6543`): this app's
+   `@prisma/adapter-pg` setup issues real prepared statements, which the Transaction pooler's
+   per-transaction connection multiplexing doesn't reliably support, despite it being
+   Supabase's default recommendation for serverless workloads.
+
+   Migrations need to run once against this string before the app can start. Do it as a
+   one-off command from Railway once the `ingest-worker` service exists (step 2) — Railway's
+   containers have normal network access, unlike Claude's sandboxed environment, which can
+   only reach allowlisted HTTPS hosts and can't reach arbitrary Postgres ports at all:
    ```bash
-   DATABASE_URL="<supabase-connection-string>" npm run db:migrate:deploy
+   npm run db:migrate:deploy
    ```
+   (Or run it from your own machine with `DATABASE_URL` set to the same string, if that's
+   easier than using Railway's one-off command UI.)
 2. **Railway project**: create a new Railway project from this GitHub repo, then add two
    services from the same repo:
    - **`web`** — the dashboard. Default Nixpacks build (`npm run build` / `npm start`) works
