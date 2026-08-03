@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TradeCategory {
+  STOCK
+  OPTION
+  FOREX
+}
+
+enum TradeStatus {
+  PENDING
+  APPROVED
+}
+
+// A raw execution fetched from IBKR. Immutable audit record; never edited after ingestion.
+model RawFill {
+  id          String   @id // IBKR trade_id
+  symbol      String
+  companyName String?
+  secType     String // STK, OPT, CASH, ...
+  currency    String
+  side        String // BUY / SELL
+  size        Float
+  price       Float
+  commission  Float
+  netAmount   Float
+  realizedPnl Float
+  tradeTime   DateTime
+  orderId     String
+  exchange    String?
+  raw         Json // full original payload from IBKR, for audit
+  legId       String?
+  leg         TradeLeg? @relation(fields: [legId], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+// One leg of a trade: a single option contract, or the whole position for a stock trade.
+model TradeLeg {
+  id           String    @id @default(cuid())
+  tradeId      String
+  trade        Trade     @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  contractDesc String // e.g. "SPX 08/03/26 6400 P" or "NVDA"
+  putCall      String? // PUT / CALL, options only
+  strike       Float?
+  expiry       DateTime?
+  quantity     Float
+  entryPrice   Float?
+  exitPrice    Float?
+  entryTime    DateTime?
+  exitTime     DateTime?
+  fills        RawFill[]
+}
+
+// A recorded trade: one round-trip stock position, one single-leg option round-trip,
+// or one multi-leg options strategy (e.g. an iron condor) grouped by the user/heuristic.
+model Trade {
+  id            String        @id @default(cuid())
+  category      TradeCategory
+  ticker        String // underlying symbol, e.g. SPX, NVDA
+  strategyLabel String? // user-editable, e.g. "Iron Condor", "Swing long"
+  tradeDate     DateTime // US market date this trade belongs to, for daily grouping
+  entryPrice    Float // net entry credit/debit (options combo) or per-share/contract price
+  exitPrice     Float? // net exit debit/credit; null while still open
+  quantity      Float
+  realizedPnl   Float?
+  commission    Float?
+  status        TradeStatus @default(PENDING)
+  comment       String?
+  legs          TradeLeg[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([tradeDate])
+  @@index([category, status])
+}
