@@ -23,34 +23,51 @@ enum TradeStatus {
   APPROVED
 }
 
-// A raw execution fetched from IBKR. Immutable audit record; never edited after ingestion.
-model RawFill {
-  id          String   @id // IBKR trade_id
-  symbol      String
-  companyName String?
-  secType     String // STK, OPT, CASH, ...
-  currency    String
-  side        String // BUY / SELL
-  size        Float
-  price       Float
-  commission  Float
-  netAmount   Float
-  realizedPnl Float
-  tradeTime   DateTime
-  orderId     String
-  exchange    String?
-  raw         Json // full original payload from IBKR, for audit
-  legId       String?
-  leg         TradeLeg? @relation(fields: [legId], references: [id])
-  createdAt   DateTime  @default(now())
+enum FillSource {
+  IBKR_TRADES_API // get_account_trades — no strike/expiry/putCall/conid
+  IBKR_FLEX // Flex Web Service — full contract detail
 }
 
-// One leg of a trade: a single option contract, or the whole position for a stock trade.
+// A raw execution fetched from IBKR. Immutable audit record; never edited after ingestion.
+model RawFill {
+  id           String     @id // IBKR trade_id / Flex tradeID
+  source       FillSource
+  contractKey  String // see contractKey() in lib/matching.ts — groups fills for FIFO matching
+  conid        Int? // IBKR contract ID, only present via Flex
+  symbol       String // underlying symbol, e.g. SPX, NVDA
+  companyName  String?
+  secType      String // STK, OPT, CASH, ...
+  putCall      String? // PUT / CALL, Flex options only
+  strike       Float? // Flex options only
+  expiry       DateTime? // Flex options only
+  multiplier   Float? // Flex options only
+  currency     String
+  side         String // BUY / SELL
+  size         Float
+  price        Float
+  commission   Float
+  netAmount    Float
+  realizedPnl  Float
+  tradeTime    DateTime
+  orderId      String
+  exchange     String?
+  raw          Json // full original payload from IBKR, for audit
+  legId        String?
+  leg          TradeLeg?  @relation(fields: [legId], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+
+  @@index([contractKey])
+  @@index([legId])
+}
+
+// One leg of a trade: a single option contract (or the whole position for a stock trade),
+// FIFO-matched from open to close — may span multiple fills on either side.
 model TradeLeg {
   id           String    @id @default(cuid())
   tradeId      String
   trade        Trade     @relation(fields: [tradeId], references: [id], onDelete: Cascade)
-  contractDesc String // e.g. "SPX 08/03/26 6400 P" or "NVDA"
+  conid        Int?
+  contractDesc String // e.g. "SPX 08/03/26 6400 P" or "NVDA" (manually labeled if source lacks contract detail)
   putCall      String? // PUT / CALL, options only
   strike       Float?
   expiry       DateTime?
@@ -59,6 +76,8 @@ model TradeLeg {
   exitPrice    Float?
   entryTime    DateTime?
   exitTime     DateTime?
+  realizedPnl  Float       @default(0)
+  commission   Float       @default(0)
   fills        RawFill[]
 }
 
