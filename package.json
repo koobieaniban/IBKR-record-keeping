@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate",
     "ingest:daily": "tsx worker/ingest-daily.ts",
     "db:migrate:deploy": "prisma migrate deploy"
   },

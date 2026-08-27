@@ -1,6 +1,10 @@
 import { getPendingTrades } from "@/lib/queries";
 import { PendingBoard } from "./PendingBoard";
 
+// Reflects live trade data written by the ingest worker (a separate process),
+// so it must never be statically generated / cached at build time.
+export const dynamic = "force-dynamic";
+
 export default async function PendingPage() {
   const trades = await getPendingTrades();
 

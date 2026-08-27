@@ -1,6 +1,10 @@
 import { getSummary } from "@/lib/queries";
 import { formatMoney } from "@/lib/format";
 
+// Reflects live trade data written by the ingest worker (a separate process),
+// so it must never be statically generated / cached at build time.
+export const dynamic = "force-dynamic";
+
 const CATEGORY_LABELS: Record<string, string> = {
   STOCK: "Stocks",
   OPTION: "Options",

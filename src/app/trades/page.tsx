@@ -3,6 +3,10 @@ import { getApprovedTrades } from "@/lib/queries";
 import { TradeHistoryList } from "./TradeHistoryList";
 import type { TradeCategory } from "@/generated/prisma/client";
 
+// Reflects live trade data written by the ingest worker (a separate process),
+// so it must never be statically generated / cached at build time.
+export const dynamic = "force-dynamic";
+
 const CATEGORIES: TradeCategory[] = ["STOCK", "OPTION", "FOREX"];
 
 export default async function TradesPage({
