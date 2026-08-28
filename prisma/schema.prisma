@@ -103,3 +103,23 @@ model Trade {
   @@index([tradeDate])
   @@index([category, status])
 }
+
+// A point-in-time snapshot of currently open positions, as reported by the Flex "Open
+// Positions" section. Wholesale replaced on every ingest run (delete all + insert fresh) —
+// this is a snapshot, not a history, so there's nothing to FIFO-match or preserve between runs.
+model OpenPosition {
+  conid              Int      @id // IBKR contract ID; stable identity for a position row
+  symbol             String // underlying symbol, e.g. SPX, NVDA
+  description        String? // e.g. "SPX Sep01'26 7635 PUT (SPXW)"
+  secType            String // STK, OPT, ...
+  putCall            String? // PUT / CALL, options only
+  strike             Float?
+  expiry             DateTime?
+  currency           String
+  quantity           Float // signed: +long, -short
+  markPrice          Float
+  positionValue      Float
+  costBasisPrice     Float // avg cost per unit, as reported by IBKR
+  unrealizedPnl      Float
+  asOf               DateTime // when this snapshot was ingested
+}

@@ -32,6 +32,9 @@ export default function RootLayout({
         <header className="border-b border-neutral-200 dark:border-neutral-800">
           <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3 text-sm">
             <span className="font-semibold">Trade Journal</span>
+            <Link href="/positions" className="hover:underline">
+              Today
+            </Link>
             <Link href="/pending" className="hover:underline">
               Pending Review
             </Link>

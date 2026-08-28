@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import type { TradeCategory } from "@/generated/prisma/client";
+import { easternTradingDate } from "./marketDate";
 
 export async function getPendingTrades() {
   return prisma.trade.findMany({
@@ -27,6 +28,24 @@ export async function getApprovedTrades(filters: TradeHistoryFilters = {}) {
     },
     include: { legs: { orderBy: { entryTime: "asc" } } },
     orderBy: [{ tradeDate: "desc" }, { createdAt: "asc" }],
+  });
+}
+
+/** Trades (any status) whose trading day is today, Eastern time — "what closed today,"
+ * independent of whether it's been reviewed/approved yet. */
+export async function getTodaysTrades() {
+  const today = new Date(`${easternTradingDate(new Date())}T00:00:00Z`);
+  return prisma.trade.findMany({
+    where: { tradeDate: today },
+    include: { legs: { orderBy: { entryTime: "asc" } } },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/** Live snapshot of currently open positions, as of the last ingest run. */
+export async function getOpenPositions() {
+  return prisma.openPosition.findMany({
+    orderBy: [{ symbol: "asc" }, { expiry: "asc" }, { strike: "asc" }],
   });
 }
 

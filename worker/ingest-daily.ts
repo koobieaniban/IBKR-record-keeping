@@ -5,9 +5,10 @@
 // trades API (no contract detail) — this worker is the ongoing, contract-detail-complete path.
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
-import { fetchFlexTrades } from "../src/lib/flex";
+import { fetchFlexReportXml, parseFlexTradesXml, parseFlexOpenPositionsXml } from "../src/lib/flex";
 import { normalizeFromFlex } from "../src/lib/normalize";
 import { ingestFills } from "../src/lib/ingest";
+import { syncOpenPositions } from "../src/lib/positions";
 
 async function main() {
   const token = process.env.IBKR_FLEX_TOKEN;
@@ -16,13 +17,22 @@ async function main() {
     throw new Error("IBKR_FLEX_TOKEN and IBKR_FLEX_QUERY_ID must be set");
   }
 
-  console.log(`[${new Date().toISOString()}] Fetching Flex trades report...`);
-  const flexTrades = await fetchFlexTrades(token, queryId);
-  console.log(`Fetched ${flexTrades.length} trade rows from Flex.`);
+  // One report fetch, both sections parsed from the same XML — a second SendRequest just to
+  // get positions would needlessly cost against the token's rate limit (see the ingest-worker
+  // deploy history: a crash-restart loop once burned through it on repeated Flex calls).
+  console.log(`[${new Date().toISOString()}] Fetching Flex report...`);
+  const xml = await fetchFlexReportXml(token, queryId);
 
+  const flexTrades = parseFlexTradesXml(xml);
+  console.log(`Fetched ${flexTrades.length} trade rows from Flex.`);
   const fills = normalizeFromFlex(flexTrades);
   const result = await ingestFills(prisma, fills);
   console.log(result);
+
+  const flexPositions = parseFlexOpenPositionsXml(xml);
+  console.log(`Fetched ${flexPositions.length} open positions from Flex.`);
+  const positionsSynced = await syncOpenPositions(prisma, flexPositions);
+  console.log(`Synced ${positionsSynced} open positions.`);
 }
 
 main()
